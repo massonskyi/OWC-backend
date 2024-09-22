@@ -1,0 +1,90 @@
+services:
+  backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    container_name: backend
+    depends_on:
+      - db
+    networks:
+      - app-network
+    volumes:
+      - ./backend:/app
+    environment:
+      - ENVIRONMENT=development
+      - DB_USER=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=main
+      - DB_PASS=postgres
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/main
+    ports:
+      - "8050:8050"
+    command: >
+      /bin/sh -c "
+        while ! nc -z db 5432; do
+          echo waiting for database;
+          sleep 2;
+        done;
+        sleep 5;
+        cd /usr/src/app;
+        export DATABASE_URL=postgres://postgres:postgres@db:5432/main;
+        echo Started connected to database on postgres://postgres:postgres@db:5432/main;
+        diesel migration run --database-url=postgres://postgres:postgres@db:5432/main;
+        cd /usr/local/bin/ && export HOST=$(hostname -i) && ./backend
+      "
+  swagger:
+    build:
+      context: middleware/swagger-ui
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    container_name: docs
+    environment:
+      - API_KEY=**None**
+      - SWAGGER_JSON=/app/swagger.json
+      - PORT=8080
+      - PORT_IPV6=
+      - BASE_URL=/
+      - SWAGGER_JSON_URL=
+      - CORS=true
+      - EMBEDDING=false
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+
+  db:
+    image: postgres:latest
+    container_name: database
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=main
+    ports:
+      - "5433:5432"
+    networks:
+      - app-network
+     
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    environment:
+      - REACT_APP_API_URL=http://172.19.0.3:8050/
+
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+networks:
+  app-network:
+    driver: bridge
+    
+
+

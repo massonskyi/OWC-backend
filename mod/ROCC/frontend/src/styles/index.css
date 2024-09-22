@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #0f0f0f;
+  color: #ffffff;
+}
+
+input, label, button {
+  transition: all 0.3s ease;
+}
+
+input:focus, label:hover, button:hover {
+  color: #00FFFF;
+  transform: scale(1.05);
+}
+
+button {
+  box-shadow: 0 0 10px #00FFFF, 0 0 20px #00FFFF, 0 0 40px #00FFFF;
+}
+
+body {
+  background: linear-gradient(135deg, #0f0f0f, #1f1f1f);
+}
