@@ -8,9 +8,9 @@
 ![Stars](https://img.shields.io/github/stars/massonskyi/OWC-backend)
 
 ### Languages Used
-- ![JavaScript](https://img.shields.io/badge/JavaScript-70%25-yellow)
-- ![HTML](https://img.shields.io/badge/HTML-20%25-orange)
-- ![CSS](https://img.shields.io/badge/CSS-10%25-blue)
+- ![JavaScript](https://img.shields.io/badge/Python-70%25-yellow)
+- ![HTML](https://img.shields.io/badge/RUST-20%25-orange)
+- ![CSS](https://img.shields.io/badge/C++-10%25-blue)
 
 ## 📚 Table of Contents
 - [📖 Introduction](#introduction)
@@ -44,15 +44,17 @@ To install and set up the project, follow these steps:
     ```
 3. Install dependencies:
     ```sh
-    npm install
+    python3 -m venv .venv
+    ./.venv/bin/activate
+    pip install -r requirements.txt
     ```
 
 ## 🚀 Usage
 To start the server, run:
 ```sh
-npm start
+    python3 main.py // --host --port Optional
 ```
-The server will be running at `http://localhost:3000`.
+The server will be running at `http://localhost:8000`.
 
 ## 🤝 Contributing
 Contributions are welcome! Please fork the repository and create a pull request with your changes.
