@@ -482,7 +482,34 @@ class UserManager:
         except Exception as e:
             await self.logger.b_crit(f"Error retrieving workspace: {workspace_id}")
             raise ValueError(f"Error retrieving workspace: {workspace_id}") from e
+    async def get_workspace_by_name(
+                self,
+                workspace_name: str
+        ) -> WorkspaceResponseSchema:
+            """
+            Retrieves a workspace by its name.
+            Args:
+                workspace_name (str): Name of the workspace to retrieve.
+            Returns:
+                WorkspaceResponseSchema: The workspace object.
+            Raises:
+                ValueError: If the workspace does not exist or there's an issue retrieving it.
+            """
+            try:
+                async with self.__async_db_session as async_session:
+                    db_workspace = await async_session.execute(
+                        select(Workspace).filter(Workspace.name == workspace_name)
+                    )
+                    workspace = db_workspace.scalars().first()
 
+                    if not workspace:
+                        await self.logger.b_info(f"Workspace not found: {workspace_name}")
+                        raise ValueError(f"Workspace not found: {workspace_name}")
+
+                    return WorkspaceResponseSchema(**workspace.to_dict())
+            except Exception as e:
+                await self.logger.b_crit(f"Error retrieving workspace: {workspace_name}")
+                raise ValueError(f"Error retrieving workspace: {workspace_name}") from e
     async def get_workspaces(
             self,
             user_id: int
@@ -509,7 +536,6 @@ class UserManager:
         except Exception as e:
             await self.logger.b_crit(f"Error retrieving workspaces for user: {user_id}")
             raise ValueError(f"Error retrieving workspaces for user: {user_id}") from e
-        
     async def create_project(
             self,
             user: User = None,
@@ -525,9 +551,14 @@ class UserManager:
         Raises:
             ValueError: If the project creation fails.
         """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(new.workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {new.workspace_name}")
+
         new_project = Project(
             name=new.name,
-            workspace_id=new.workspace_id,
+            workspace_id=workspace.id,  # Привязка через ID, полученный по имени
             description=new.description,
             language=new.language,
             is_active=new.is_active,
@@ -542,17 +573,17 @@ class UserManager:
                 else:
                     async_session.add(new_project)
                     await async_session.commit()
-                
+
         except SQLAlchemyError as e:
             await self.logger.b_crit(f"SQLAlchemyError: {e}")
             raise ValueError(f"Error creating project: {new}")
-        
+
         except Exception as e:
             await self.logger.b_crit(f"Error creating project: {new}")
             raise ValueError(f"Error creating project: {new}")
-        
+
         return ProjectResponseSchema(**new_project.to_dict())
-    
+
     async def update_project(
             self,
             user_id: int,
@@ -570,11 +601,16 @@ class UserManager:
         Raises:
             ValueError: If the project does not exist or the update fails.
         """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(updated_data.workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {updated_data.workspace_name}")
+
         try:
             async with self.__async_db_session as async_session:
                 db_project = await async_session.execute(
                     select(Project)
-                    .where(Project.id == project_id, Project.workspace_id == updated_data.workspace_id)
+                    .where(Project.id == project_id, Project.workspace_id == workspace.id)
                 )
                 db_project = db_project.scalars().first()
 
@@ -601,16 +637,16 @@ class UserManager:
         except Exception as e:
             await self.logger.b_crit(f"Error updating project: {project_id}")
             raise ValueError(f"Error updating project: {project_id}") from e
-        
+
     async def get_last_project(
             self,
-            workspace_id: int
+            workspace_name: str
     ) -> Project:
         """
         Get the last project created in the workspace.
 
         Args:
-            workspace_id (int): The ID of the workspace.
+            workspace_name (str): The name of the workspace.
 
         Returns:
             Project: The last project created in the workspace.
@@ -618,46 +654,56 @@ class UserManager:
         Raises:
             ValueError: If the project does not exist.
         """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
         try:
             async with self.__async_db_session as async_session:
                 db_project = await async_session.execute(
                     select(Project)
-                    .where(Project.workspace_id == workspace_id)
+                    .where(Project.workspace_id == workspace.id)
                     .order_by(Project.created_at.desc())
                     .limit(1)
                 )
                 db_project = db_project.scalars().first()
 
                 if db_project is None:
-                    await self.logger.b_crit(f"No projects found for workspace: {workspace_id}")
-                    raise ValueError(f"No projects found for workspace: {workspace_id}")
+                    await self.logger.b_crit(f"No projects found for workspace: {workspace_name}")
+                    raise ValueError(f"No projects found for workspace: {workspace_name}")
 
                 return db_project
 
         except Exception as e:
-            await self.logger.b_crit(f"Error retrieving last project for workspace: {workspace_id}")
-            raise ValueError(f"Error retrieving last project for workspace: {workspace_id}") from e
+            await self.logger.b_crit(f"Error retrieving last project for workspace: {workspace_name}")
+            raise ValueError(f"Error retrieving last project for workspace: {workspace_name}") from e
 
     async def get_project(
             self,
-            workspace_id: int,
+            workspace_name: str,
             project_id: int
     ) -> ProjectResponseSchema:
         """
         Gets a project by its ID.
         Args:
-            workspace_id (int): ID of the workspace.
+            workspace_name (str): Name of the workspace.
             project_id (int): The ID of the project to retrieve.
         Returns:
             ProjectResponseSchema: The retrieved project.
         Raises:
             ValueError: If the project does not exist.
         """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
         try:
             async with self.__async_db_session as async_session:
                 db_project = await async_session.execute(
                     select(Project)
-                    .where(Project.id == project_id, Project.workspace_id == workspace_id)
+                    .where(Project.id == project_id, Project.workspace_id == workspace.id)
                 )
                 db_project = db_project.scalars().first()
 
@@ -673,51 +719,64 @@ class UserManager:
 
     async def get_projects(
             self,
-            workspace_id: int
+            workspace_name: str
     ) -> list[Any] | list[ProjectResponseSchema]:
         """
         Retrieves all projects for a given workspace.
         Args:
-            workspace_id (int): ID of the workspace whose projects are to be retrieved.
+            workspace_name (str): Name of the workspace whose projects are to be retrieved.
         Returns:
             list[ProjectResponseSchema]: A list containing all the projects in the workspace.
         Raises:
             ValueError: If there's an issue retrieving projects.
         """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
         try:
             async with self.__async_db_session as async_session:
-                db_projects = await async_session.execute(select(Project).filter(Project.workspace_id == workspace_id))
+                db_projects = await async_session.execute(
+                    select(Project)
+                    .filter(Project.workspace_id == workspace.id)
+                )
                 projects = db_projects.scalars().all()
 
                 if not projects:
-                    await self.logger.b_info(f"No projects found for workspace: {workspace_id}")
+                    await self.logger.b_info(f"No projects found for workspace: {workspace_name}")
                     return []
 
                 return [ProjectResponseSchema(**project.to_dict()) for project in projects]
         except Exception as e:
-            await self.logger.b_crit(f"Error retrieving projects for workspace: {workspace_id}")
-            raise ValueError(f"Error retrieving projects for workspace: {workspace_id}") from e
+            await self.logger.b_crit(f"Error retrieving projects for workspace: {workspace_name}")
+            raise ValueError(f"Error retrieving projects for workspace: {workspace_name}") from e
 
     async def delete_project(
             self,
-            workspace_id: int,
+            workspace_name: str,
             project_id: int
     ) -> None:
         """
         Deletes a project by its ID.
         Args:
-            workspace_id (int): ID of the workspace.
+            workspace_name (str): Name of the workspace.
             project_id (int): The ID of the project to delete.
         Returns:
             None
         Raises:
             ValueError: If the project does not exist or the deletion fails.
         """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
         try:
             async with self.__async_db_session as async_session:
                 db_project = await async_session.execute(
                     select(Project)
-                    .filter(Project.id == project_id, Project.workspace_id == workspace_id)
+                    .filter(Project.id == project_id, Project.workspace_id == workspace.id)
                 )
                 db_project = db_project.scalars().first()
 
@@ -733,7 +792,263 @@ class UserManager:
         except Exception as e:
             await self.logger.b_crit(f"Error deleting project: {project_id}")
             raise ValueError(f"Error deleting project: {project_id}") from e
-        
+
+    async def create_project(
+            self,
+            user: User = None,
+            new: ProjectSchema = None,
+    ) -> ProjectResponseSchema:
+        """
+        Creates a new project.
+        Args:
+            user (User): The user who owns the project.
+            new (ProjectSchema): The project to be created.
+        Returns:
+            ProjectResponseSchema: The created project.
+        Raises:
+            ValueError: If the project creation fails.
+        """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(new.workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {new.workspace_name}")
+
+        new_project = Project(
+            name=new.name,
+            workspace_id=workspace.id,  # Привязка через ID, полученный по имени
+            description=new.description,
+            language=new.language,
+            is_active=new.is_active,
+            path=new.path,
+        )
+        try:
+            async with self.__async_db_session as async_session:
+                if not async_session.in_transaction():
+                    async with async_session.begin():
+                        async_session.add(new_project)
+                        await async_session.commit()
+                else:
+                    async_session.add(new_project)
+                    await async_session.commit()
+
+        except SQLAlchemyError as e:
+            await self.logger.b_crit(f"SQLAlchemyError: {e}")
+            raise ValueError(f"Error creating project: {new}")
+
+        except Exception as e:
+            await self.logger.b_crit(f"Error creating project: {new}")
+            raise ValueError(f"Error creating project: {new}")
+
+        return ProjectResponseSchema(**new_project.to_dict())
+
+    async def update_project(
+            self,
+            user_id: int,
+            project_id: int,
+            updated_data: ProjectSchema
+    ) -> ProjectResponseSchema:
+        """
+        Updates an existing project.
+        Args:
+            user_id (int): ID of the user who owns the project.
+            project_id (int): The ID of the project to update.
+            updated_data (ProjectSchema): The updated project data.
+        Returns:
+            ProjectResponseSchema: The updated project.
+        Raises:
+            ValueError: If the project does not exist or the update fails.
+        """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(updated_data.workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {updated_data.workspace_name}")
+
+        try:
+            async with self.__async_db_session as async_session:
+                db_project = await async_session.execute(
+                    select(Project)
+                    .where(Project.id == project_id, Project.workspace_id == workspace.id)
+                )
+                db_project = db_project.scalars().first()
+
+                if db_project is None:
+                    await self.logger.b_crit(f"Project not found: {project_id}")
+                    raise ValueError(f"Project not found: {project_id}")
+
+                # Обновляем данные проекта
+                db_project.name = updated_data.name
+                db_project.description = updated_data.description
+                db_project.language = updated_data.language
+                db_project.is_active = updated_data.is_active
+                db_project.path = updated_data.path
+
+                async with async_session.begin():
+                    await async_session.commit()
+
+                return ProjectResponseSchema(**db_project.to_dict())
+
+        except SQLAlchemyError as e:
+            await self.logger.b_crit(f"SQLAlchemyError: {e}")
+            raise ValueError(f"Error updating project: {project_id}")
+
+        except Exception as e:
+            await self.logger.b_crit(f"Error updating project: {project_id}")
+            raise ValueError(f"Error updating project: {project_id}") from e
+
+    async def get_last_project(
+            self,
+            workspace_name: str
+    ) -> Project:
+        """
+        Get the last project created in the workspace.
+
+        Args:
+            workspace_name (str): The name of the workspace.
+
+        Returns:
+            Project: The last project created in the workspace.
+
+        Raises:
+            ValueError: If the project does not exist.
+        """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
+        try:
+            async with self.__async_db_session as async_session:
+                db_project = await async_session.execute(
+                    select(Project)
+                    .where(Project.workspace_id == workspace.id)
+                    .order_by(Project.created_at.desc())
+                    .limit(1)
+                )
+                db_project = db_project.scalars().first()
+
+                if db_project is None:
+                    await self.logger.b_crit(f"No projects found for workspace: {workspace_name}")
+                    raise ValueError(f"No projects found for workspace: {workspace_name}")
+
+                return db_project
+
+        except Exception as e:
+            await self.logger.b_crit(f"Error retrieving last project for workspace: {workspace_name}")
+            raise ValueError(f"Error retrieving last project for workspace: {workspace_name}") from e
+
+    async def get_project(
+            self,
+            workspace_name: str,
+            project_id: int
+    ) -> ProjectResponseSchema:
+        """
+        Gets a project by its ID.
+        Args:
+            workspace_name (str): Name of the workspace.
+            project_id (int): The ID of the project to retrieve.
+        Returns:
+            ProjectResponseSchema: The retrieved project.
+        Raises:
+            ValueError: If the project does not exist.
+        """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
+        try:
+            async with self.__async_db_session as async_session:
+                db_project = await async_session.execute(
+                    select(Project)
+                    .where(Project.id == project_id, Project.workspace_id == workspace.id)
+                )
+                db_project = db_project.scalars().first()
+
+                if db_project is None:
+                    await self.logger.b_crit(f"Project not found: {project_id}")
+                    raise ValueError(f"Project not found: {project_id}")
+
+                return ProjectResponseSchema(**db_project.to_dict())
+
+        except Exception as e:
+            await self.logger.b_crit(f"Error retrieving project: {project_id}")
+            raise ValueError(f"Error retrieving project: {project_id}") from e
+
+    async def get_projects(
+            self,
+            workspace_name: str
+    ) -> list[Any] | list[ProjectResponseSchema]:
+        """
+        Retrieves all projects for a given workspace.
+        Args:
+            workspace_name (str): Name of the workspace whose projects are to be retrieved.
+        Returns:
+            list[ProjectResponseSchema]: A list containing all the projects in the workspace.
+        Raises:
+            ValueError: If there's an issue retrieving projects.
+        """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
+        try:
+            async with self.__async_db_session as async_session:
+                db_projects = await async_session.execute(
+                    select(Project)
+                    .filter(Project.workspace_id == workspace.id)
+                )
+                projects = db_projects.scalars().all()
+
+                if not projects:
+                    await self.logger.b_info(f"No projects found for workspace: {workspace_name}")
+                    return []
+
+                return [ProjectResponseSchema(**project.to_dict()) for project in projects]
+        except Exception as e:
+            await self.logger.b_crit(f"Error retrieving projects for workspace: {workspace_name}")
+            raise ValueError(f"Error retrieving projects for workspace: {workspace_name}") from e
+
+    async def delete_project(
+            self,
+            workspace_name: str,
+            project_id: int
+    ) -> None:
+        """
+        Deletes a project by its ID.
+        Args:
+            workspace_name (str): Name of the workspace.
+            project_id (int): The ID of the project to delete.
+        Returns:
+            None
+        Raises:
+            ValueError: If the project does not exist or the deletion fails.
+        """
+        # Находим рабочее пространство по его имени
+        workspace = await self.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_name}")
+
+        try:
+            async with self.__async_db_session as async_session:
+                db_project = await async_session.execute(
+                    select(Project)
+                    .filter(Project.id == project_id, Project.workspace_id == workspace.id)
+                )
+                db_project = db_project.scalars().first()
+
+                if not db_project:
+                    await self.logger.b_crit(f"Project not found for deletion: {project_id}")
+                    raise ValueError(f"Project not found: {project_id}")
+
+                async with async_session.begin():
+                    await async_session.delete(db_project)
+                    await async_session.commit()
+
+                await self.logger.b_info(f"Project deleted: {project_id}")
+        except Exception as e:
+            await self.logger.b_crit(f"Error deleting project: {project_id}")
+            raise ValueError(f"Error deleting project: {project_id}") from e
 
     async def test_exec(self, response, user):
         """
@@ -788,8 +1103,10 @@ class UserManager:
             return "", "Invalid parameters"
         if params['language'] == 'python':
             return self.execute_python_code(params)
-        if params['language'] == 'c' or params['language'] == 'cpp':
+        if params['language'] == 'c':
             return self.execute_c_code(params)
+        if params['language'] == 'cpp':
+            return self.execute_cpp_code(params)
         if params['language'] == 'js':
             return self.execute_js_code(params)
         if params['language'] == 'cs':
@@ -816,16 +1133,23 @@ class UserManager:
             output = result.decode('utf-8').strip()
             error = None
         except docker.errors.ContainerError as e:
-            output = e.stderr.decode('utf-8').strip()
+            output = e.stderr.decode('utf-8').strip() if e.stderr else ''
             error = f"Command '{e.command}' in image '{e.image}' returned non-zero exit status {e.exit_status}: {output}"
+        except docker.errors.ImageNotFound as e:
+            output = ''
+            error = f"Image not found: {e}"
+        except docker.errors.APIError as e:
+            output = ''
+            error = f"Docker API error: {e}"
         except Exception as e:
             output = ''
             error = str(e)
-        
-        print(f"Docker container output: {output}")  # Отладочное сообщение
-        print(f"Docker container error: {error}")  # Отладочное сообщение
-        return [output, error or None]
 
+        # Отладочная информация
+        print(f"Docker container output: {output}")
+        print(f"Docker container error: {error}")
+
+        return output, error or None
     def execute_python_code(self, params: dict) -> Tuple[str, Union[str, None]]:
         code = params['code']
         user_dir = params['user_dir']
@@ -840,8 +1164,28 @@ class UserManager:
         path = os.path.join(user_dir, f"{str(uuid.uuid4())}.c")
         with self.create_code_file(path, code):
             container_path = "/usr/src/app/code.c"  # Путь внутри контейнера
-            return self.run_docker_container("gcc:latest", f"sh -c 'gcc {container_path} -o /tmp/code && /tmp/code'", user_dir)
+            return self.run_docker_container("gcc:latest", f"sh -c 'gcc {container_path} -o /tmp/code && /tmp/code'",
+                                             user_dir)
 
+    def execute_cpp_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+        code = params['code']
+        user_dir = params['user_dir']
+
+        # Создаем файл с расширением .cpp
+        cpp_file_path = os.path.join(user_dir, f"{str(uuid.uuid4())}.cpp")
+        container_path = "/usr/src/app/code.cpp"  # Путь внутри контейнера
+
+        # Создание файла
+        with self.create_code_file(cpp_file_path, code):
+            print(
+                f"Creating C++ file at {cpp_file_path} and running container with command: g++ {container_path} -o /tmp/code && /tmp/code")
+
+            # Убедитесь, что файл правильно монтируется в контейнер
+            return self.run_docker_container(
+                "gcc:latest",
+                f"sh -c 'g++ {container_path} -o /tmp/code && /tmp/code'",
+                user_dir
+            )
     def execute_js_code(self, params: dict) -> Tuple[str, Union[str, None]]:
         code = params['code']
         user_dir = params['user_dir']

@@ -1,6 +1,11 @@
-from datetime import  datetime
+from contextlib import contextmanager
+from datetime import  datetime, timedelta
 import json
+import os
+import subprocess
+import uuid
 
+import docker
 from fastapi import (
     APIRouter, 
     Depends,
@@ -19,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.session import get_async_db
 
 
+from middleware import ACCESS_TOKEN_EXPIRE_MINUTES
 from middleware.user.manager import UserManager
 from middleware.user.models import User
 
@@ -29,9 +35,9 @@ from middleware.user.schemas import (
     Token,
     UserLoginSchema, WorkspaceSchema
 )
-from typing import Optional # noqa: F401
+from typing import Optional, Tuple, Union # noqa: F401
 
-from middleware.utils import get_current_user
+from middleware.utils import create_access_token, get_current_user
 
 UserCreateResponse,\
 TokenResponse,\
@@ -59,7 +65,32 @@ async def get_user_manager(
     """
     return UserManager(db_session)
 
-
+@API_USER_MODULE.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), user_manager: 'UserManager' = Depends(get_user_manager)):
+    user,_,_= await user_manager.authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token, expire = create_access_token(
+        data={"sub": user.id}, expires_delta=access_token_expires
+    )
+    response = Response(
+        content=json.dumps({"access_token": access_token, "token_type": "bearer", "expires_at": expire.isoformat()}),
+        media_type="application/json"
+    )
+    response.set_cookie(
+        key="token",
+        value=access_token,
+        httponly=True,
+        samesite="Lax",
+        secure=False,
+        max_age=int(access_token_expires.total_seconds())  # Используем total_seconds() для получения времени в секундах
+    )
+    return response
 @API_USER_MODULE.post(
     '/sign_up', 
     response_model=UserCreateSchema,
@@ -93,33 +124,34 @@ async def sign_up(
         
     else:
         response_content['user'] = user.to_dict()
-        response_content['access_token'] = access_token
+        response_content['token'] = access_token
         response_content['token_expires_at'] = expire.timestamp()
         response_content['message'] = "User created successfully"
         status_code = status.HTTP_201_CREATED
-    finally:
+    # finally:
         
-        if not response_content.get('user', None):
-            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-            response_content['user'] = None
-            response_content['access_token'] = None
-            response_content['token_expires_at'] = None
-            response_content['message'] = "User created error"
+    #     if not response_content.get('user', None):
+    #         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    #         response_content['user'] = None
+    #         response_content['token'] = None
+    #         response_content['token_expires_at'] = None
+    #         response_content['message'] = "User created error"
 
         response_json = json.dumps(response_content)
         response = Response(content=response_json, media_type="application/json", status_code=status_code)
 
         if access_token and expire:
+            current_time = datetime.utcnow()
+            time_delta = expire - current_time  # Получаем объект timedelta
+            max_age = int(time_delta.total_seconds())  # Применяем метод total_seconds()
             # Set the cookie
             response.set_cookie(
-                key="access_token",
-                value=access_token ,
-                expires=expire.timestamp(),
+                key="token",
+                value=access_token,
+                httponly=True,
+                samesite="Lax",
                 secure=False,
-                httponly=False,
-                samesite=None,
-                path="/",
-                domain="localhost"
+                max_age=int(max_age)  # Используем total_seconds() для получения времени в секундах
             )
 
         # # Optional: Add custom headers if needed
@@ -162,7 +194,7 @@ async def sign_in(
         
     else:
         response_content['user'] = user.to_dict()
-        response_content['access_token'] = access_token
+        response_content['token'] = access_token
         response_content['token_expires_at'] = expire
         response_content['message'] = "User authenticated successfully"
         status_code = status.HTTP_200_OK
@@ -171,7 +203,7 @@ async def sign_in(
         if not response_content.get('user', None):
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
             response_content['user'] = None
-            response_content['access_token'] = None
+            response_content['token'] = None
             response_content['token_expires_at'] = None
             response_content['message'] = "User authenticated error"
             
@@ -180,14 +212,14 @@ async def sign_in(
 
         if access_token and expire:
             response.set_cookie(
-                key="access_token",
+                key="token",
                 value=access_token,
-                expires=expire,  # Convert datetime to timestamp
-                secure=False,  # Optional: Set Secure flag if using HTTPS
-                httponly=True,  # Optional: Set the HttpOnly flag for security
-                samesite=None, # Optional: Set SameSite policy
-                path="/",  # Ensure the cookie is available throughout your site
-                domain="localhost"  # Adjust this if your site spans multiple subdomains
+                expires=expire,
+                secure=False,
+                httponly=True,
+                samesite="Lax",
+                path="/",
+                domain="localhost"
             )
         return response
 
@@ -265,6 +297,29 @@ async def get_workspace(
         response_json = json.dumps(response_content)
         return Response(content=response_json, media_type="application/json", status_code=status_code)
 
+@API_USER_MODULE.get(
+    "/workspaces/name/{workspace_name}",
+    response_model=WorkspaceSchema,
+    summary="Get workspace by name",
+)
+async def get_workspace_by_name(
+    workspace_name: str,
+    workspace_manager: UserManager = Depends(get_user_manager),
+    current_user: User = Depends(get_current_user)
+) -> WorkspaceSchema:
+    """
+    Retrieve a workspace by its name.
+    :param workspace_manager: Workspace manager instance. Used to get workspace.
+    :param workspace_name: Name of the workspace to retrieve.
+    :return: Workspace object in JSON format.
+    """
+    try:
+        workspace = await workspace_manager.get_workspace_by_name(workspace_name)
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return workspace
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @API_USER_MODULE.get(
     '/workspaces',
@@ -297,11 +352,11 @@ async def get_workspaces(
 
 
 @API_USER_MODULE.delete(
-    '/workspaces/{workspace_id}',
+    '/workspaces/{workspace_name}',
     summary="Delete workspace by ID",
 )
 async def delete_workspace(
-        workspace_id: int,
+        workspace_id: str,
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Response:
@@ -330,13 +385,12 @@ async def delete_workspace(
     finally:
         response_json = json.dumps(response_content)
         return Response(content=response_json, media_type="application/json", status_code=status_code)
-
 @API_USER_MODULE.post(
-    '/projects/',
+    '/workspaces/{workspace_name}/projects/',
     summary="Create a new project",
 )
 async def create_project(
-        workspace_id: int,
+        workspace_name: str,
         new: ProjectSchema = Depends(),
         project_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
@@ -344,7 +398,8 @@ async def create_project(
     status_code = None
     response_content = {}
     try:
-        new.workspace_id = workspace_id 
+        workspace = await project_manager.get_workspace_by_name(workspace_name)
+        new.workspace_id = workspace.id
         project = await project_manager.create_project(current_user, new)
     except Exception as e:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -361,11 +416,11 @@ async def create_project(
         return Response(content=response_json, media_type="application/json", status_code=status_code)
 
 @API_USER_MODULE.get(
-    '/projects/{project_id}',
+    '/workspaces/{workspace_name}/projects/{project_id}',
     summary="Get project by ID",
 )
 async def get_project(
-        workspace_id: int,
+        workspace_name: str,
         project_id: Optional[int],
         project_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
@@ -382,7 +437,8 @@ async def get_project(
             detail="Project ID is not found"
         )
     try:
-        project = await project_manager.get_project(workspace_id, project_id)
+        workspace = await project_manager.get_workspace_by_name(workspace_name)
+        project = await project_manager.get_project(workspace.id, project_id)
     except ValueError as val_err:
         status_code = status.HTTP_404_NOT_FOUND
         raise HTTPException(
@@ -404,11 +460,11 @@ async def get_project(
         return Response(content=response_json, media_type="application/json", status_code=status_code)
 
 @API_USER_MODULE.get(
-    '/projects/',
+    '/workspaces/{workspace_name}/projects/',
     summary="Get all projects for the user",
 )
 async def get_projects(
-        workspace_id: int,
+        workspace_name: str,
         project_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Response:
@@ -418,7 +474,8 @@ async def get_projects(
     status_code = None
     response_content = {}
     try:
-        projects = await project_manager.get_projects(workspace_id)
+        workspace = await project_manager.get_workspace_by_name(workspace_name)
+        projects = await project_manager.get_projects(workspace.id)
     except Exception as e:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         raise HTTPException(
@@ -434,11 +491,11 @@ async def get_projects(
         return Response(content=response_json, media_type="application/json", status_code=status_code)
 
 @API_USER_MODULE.delete(
-    '/projects/{project_id}',
+    '/workspaces/{workspace_name}/projects/{project_id}',
     summary="Delete project by ID",
 )
 async def delete_project(
-        workspace_id: int,
+        workspace_name: str,
         project_id: int,
         project_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
@@ -449,7 +506,8 @@ async def delete_project(
     status_code = None
     response_content = {}
     try:
-        await project_manager.delete_project(workspace_id, project_id)
+        workspace = await project_manager.get_workspace_by_name(workspace_name)
+        await project_manager.delete_project(workspace.id, project_id)
     except ValueError as val_err:
         status_code = status.HTTP_404_NOT_FOUND
         raise HTTPException(
@@ -470,11 +528,11 @@ async def delete_project(
         return Response(content=response_json, media_type="application/json", status_code=status_code)
 
 @API_USER_MODULE.put(
-    '/projects/{project_id}',
+    '/workspaces/{workspace_name}/projects/{project_id}',
     summary="Update project by ID",
 )
 async def update_project(
-        workspace_id: int,
+        workspace_name: str,
         project_id: int,
         updated_data: ProjectSchema = Depends(),
         project_manager: UserManager = Depends(get_user_manager),
@@ -486,7 +544,8 @@ async def update_project(
     status_code = None
     response_content = {}
     try:
-        updated_data.workspace_id = workspace_id  # Устанавливаем workspace_id для проекта
+        workspace = await project_manager.get_workspace_by_name(workspace_name)
+        updated_data.workspace_id = workspace.id  # Устанавливаем workspace_id для проекта
         project = await project_manager.update_project(current_user.id, project_id, updated_data)
     except ValueError as val_err:
         status_code = status.HTTP_404_NOT_FOUND
@@ -507,6 +566,7 @@ async def update_project(
     finally:
         response_json = json.dumps(response_content)
         return Response(content=response_json, media_type="application/json", status_code=status_code)
+    
 @API_USER_MODULE.post(
     '/code/execute',
     summary='Testing code editor for not loging users',
@@ -519,6 +579,175 @@ async def execute(
 ):
     response = CodeSchema(code=code, language=language)
     try:
+        result = await workspace_manager.test_exec(response, user=current_user)
+    except Exception as e :
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error in code execution: {e}"
+        )
+    return result
+
+
+@API_USER_MODULE.post(
+    '/test_code_execute',
+    summary='Testing code editor for not loging users',
+)
+async def execute(
+    code: str = Form(...,  description="Code", min_length=1, max_length=10000),
+    language: str = Form(..., description="Language", min_length=1, max_length=255),
+    workspace_manager: UserManager = Depends(get_user_manager),
+    current_user: User = Depends(get_current_user)
+):
+    response = CodeSchema(code=code, language=language)
+    class CodeExecutor:
+        USING_LANGUAGE = ['python', 'c', 'cpp', 'js', 'cs', 'go', 'ruby']
+
+        async def test_exec(self, response, temp_files):
+            """
+            This method is implemented for testing code runner with temp files.
+            Args:
+                - code: Code for executing
+                - language: Language code for executing
+            Returns:
+                - CodeExecute
+            """
+            if response.language not in self.USING_LANGUAGE:
+                return {
+                    'output': "",
+                    "error": "This language is not available now"
+                }
+
+            try:
+                output, error = self.execute_code(response.code, response.language, temp_files)
+                if not output and not error:
+                    error = "No output or error returned from execution"
+            except subprocess.CalledProcessError as e:
+                output = ''
+                error = str(e)
+            except Exception as e:
+                output = ''
+                error = str(e)
+
+            return {
+                'output': output,
+                'error': error,
+            }
+
+        @contextmanager
+        def create_code_file(self, path: str, text: str):
+            with open(path, "w") as file:
+                file.write(text)
+            yield
+            # os.remove(path) Optional
+
+        def execute_code(self, code: str, language: str, temp_files: str) -> Tuple[str, Union[str, None]]:
+            temp_dir = f"{os.getcwd()}/storage/temp/{temp_files}/tmp/projects"
+            os.makedirs(temp_dir, exist_ok=True)
+            params = {
+                'language': language,
+                'code': code,
+                'temp_dir': temp_dir
+            }
+
+            print(f"Executing code with params: {params}")  # Отладочное сообщение
+
+            if not params:
+                return "", "Invalid parameters"
+            if params['language'] == 'python':
+                return self.execute_python_code(params)
+            if params['language'] == 'c' or params['language'] == 'cpp':
+                return self.execute_c_code(params)
+            if params['language'] == 'js':
+                return self.execute_js_code(params)
+            if params['language'] == 'cs':
+                return self.execute_cs_code(params)
+            if params['language'] == 'go':
+                return self.execute_golang_code(params)
+            if params['language'] == 'ruby':
+                return self.execute_ruby_code(params)
+            else:
+                return "", "Unsupported language"
+
+        def run_docker_container(self, image: str, command: str, temp_dir: str) -> Tuple[str, Union[str, None]]:
+            client = docker.from_env()
+            try:
+                result = client.containers.run(
+                    image,
+                    command,
+                    volumes={os.path.abspath(temp_dir): {'bind': '/usr/src/app', 'mode': 'rw'}},
+                    working_dir='/usr/src/app',
+                    detach=False,
+                    stdout=True,
+                    stderr=True
+                )
+                output = result.decode('utf-8').strip()
+                error = None
+            except docker.errors.ContainerError as e:
+                output = e.stderr.decode('utf-8').strip()
+                error = f"Command '{e.command}' in image '{e.image}' returned non-zero exit status {e.exit_status}: {output}"
+            except Exception as e:
+                output = ''
+                error = str(e)
+
+            print(f"Docker container output: {output}")  # Отладочное сообщение
+            print(f"Docker container error: {error}")  # Отладочное сообщение
+            return [output, error or None]
+
+        def execute_python_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+            code = params['code']
+            temp_dir = params['temp_dir']
+            path = os.path.join(temp_dir, "code.py")
+            with self.create_code_file(path, code):
+                container_path = "/usr/src/app/code.py"  # Путь внутри контейнера
+                return self.run_docker_container("python:3.9", f"python {container_path}", temp_dir)
+
+        def execute_c_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+            code = params['code']
+            temp_dir = params['temp_dir']
+            path = os.path.join(temp_dir, f"{str(uuid.uuid4())}.c")
+            with self.create_code_file(path, code):
+                container_path = "/usr/src/app/code.c"  # Путь внутри контейнера
+                return self.run_docker_container("gcc:latest", f"sh -c 'gcc {container_path} -o /tmp/code && /tmp/code'", temp_dir)
+
+        def execute_js_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+            code = params['code']
+            temp_dir = params['temp_dir']
+            path = os.path.join(temp_dir, f"{str(uuid.uuid4())}.js")
+            with self.create_code_file(path, code):
+                container_path = "/usr/src/app/code.js"  # Путь внутри контейнера
+                return self.run_docker_container("node:latest", f"node {container_path}", temp_dir)
+
+        def execute_cs_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+            code = params['code']
+            temp_dir = params['temp_dir']
+            path = os.path.join(temp_dir, "cs_project")
+            code_file_path = os.path.join(path, f"{str(uuid.uuid4())}.cs")
+            os.makedirs(path, exist_ok=True)
+            with self.create_code_file(code_file_path, code):
+                container_path = "/usr/src/app/cs_project"  # Путь внутри контейнера
+                return self.run_docker_container(
+                    "mcr.microsoft.com/dotnet/sdk:latest",
+                    f"sh -c 'dotnet new console -o {container_path} --force && dotnet build {container_path} && dotnet run --project {container_path}'",
+                    temp_dir
+                )
+
+        def execute_ruby_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+            code = params['code']
+            temp_dir = params['temp_dir']
+            path = os.path.join(temp_dir, f"{str(uuid.uuid4())}.rb")
+            with self.create_code_file(path, code):
+                container_path = "/usr/src/app/code.rb"  # Путь внутри контейнера
+                return self.run_docker_container("ruby:latest", f"ruby {container_path}", temp_dir)
+
+        def execute_golang_code(self, params: dict) -> Tuple[str, Union[str, None]]:
+            code = params['code']
+            temp_dir = params['temp_dir']
+            path = os.path.join(temp_dir, f"{str(uuid.uuid4())}.go")
+            with self.create_code_file(path, code):
+                container_path = "/usr/src/app/code.go"  # Путь внутри контейнера
+                return self.run_docker_container("golang:latest", f"sh -c 'go build {container_path} && {container_path}'", temp_dir)
+    try:
+        # result = CodeExecutor.test_exec(response, user=current_user)
         result = await workspace_manager.test_exec(response, user=current_user)
     except Exception as e :
         raise HTTPException(

@@ -14,5 +14,5 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api_version_1/user/sign_in")
 
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 600000
+ACCESS_TOKEN_EXPIRE_MINUTES = 2e5
 

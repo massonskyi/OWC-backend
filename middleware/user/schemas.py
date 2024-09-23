@@ -143,7 +143,6 @@ class WorkspaceSchema(BaseModel):
         arbitrary_types_allowed = True
 
 class ProjectSchema(BaseModel):
-    workspace_id: int
     name: str
     language: str
     description: Union[str, None] = None
@@ -165,7 +164,6 @@ class WorkspaceResponseSchema(BaseModel):
         arbitrary_types_allowed = True
 
 class ProjectResponseSchema(BaseModel):
-    workspace_id: int
     name: str
     language: str
     description: Union[str, None]

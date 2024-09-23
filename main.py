@@ -48,7 +48,6 @@ origins = [
     "http://localhost:8080",
     "http://localhost:3000",
     "http://10.78.1.48:3000",  # Add your React app's origin here
-
 ]
 
 app.add_middleware(
@@ -92,11 +91,11 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         content={"message": exc.detail},
     )
-@app.get("/{full_path:path}")
-async def catch_all(full_path: str):
-    # Возвращаем index.html для любых запросов, которые не соответствуют API
-    with open(INDEX_DIRECTORY, 'r') as file:
-        return HTMLResponse(content=file.read(), status_code=200)
+# @app.get("/{full_path:path}")
+# async def catch_all(full_path: str):
+#     # Возвращаем index.html для любых запросов, которые не соответствуют API
+#     with open(INDEX_DIRECTORY, 'r') as file:
+#         return HTMLResponse(content=file.read(), status_code=200)
     
 def create_parser() -> argparse.ArgumentParser:
     """
@@ -107,6 +106,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", default=8000, type=int)
     parser.add_argument("--reload", default=False, type=bool)
     return parser
+
 if __name__ == "__main__":
     """
     If u start server from console

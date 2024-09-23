@@ -107,7 +107,7 @@ def create_access_token(
         data: dict,
         expires_delta=None,
         SECRET_KEY: str = None,
-        ACCESS_TOKEN_EXPIRE_MINUTES: int = 999999,
+        ACCESS_TOKEN_EXPIRE_MINUTES: int = 2e10,
         ALGORITHM: str = "HS256"
 ) -> tuple[str, datetime | Any]:
     """
@@ -126,7 +126,9 @@ def create_access_token(
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+       # Здесь лучше использовать timedelta для корректного вычисления
+        expire = datetime.utcnow() + timedelta(minutes=min(ACCESS_TOKEN_EXPIRE_MINUTES, 525600))  # Ограничение в 1 год
+
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, cfg['BACKEND_SECRET_COOKIE_KEY'], algorithm=ALGORITHM)
     return encoded_jwt, expire

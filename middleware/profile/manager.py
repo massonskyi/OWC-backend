@@ -41,6 +41,7 @@ class ProfileManager:
             await self.logger.b_exc(f"User with ID: {user_id} not found")
             raise Exception(f"User with ID: {user_id} not found")
         return UserResponseSchema(**user.__dict__)
+    
     async def update_user_profile(self, user_id: int, new: UserCreateSchema) -> UserResponseSchema:
         """
         Update the user profile with the given ID with the new data.

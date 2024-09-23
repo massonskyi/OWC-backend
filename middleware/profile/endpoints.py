@@ -1,3 +1,4 @@
+import base64
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,7 @@ from database.session import get_async_db
 from middleware.user.schemas import UserResponseSchema, UserCreateSchema
 from middleware.utils import get_current_user
 from typing import Optional # noqa: F401
+
 endpoint = APIRouter(
     prefix="/profile",
     tags=["profile"],
@@ -29,14 +31,18 @@ async def get_profile_manager(
         HTTPException: If user is not authenticated.
     """
     return ProfileManager(db=db)
+
 # Пример функции для получения изображения
-def get_user_avatar(avatar_path: str):
+def get_user_avatar(avatar_path: str) -> str:
     try:
         with open(avatar_path, "rb") as image_file:
             image_data = image_file.read()
-        return image_data
+        return base64.b64encode(image_data).decode('utf-8')
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Avatar not found")
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Avatar not found: {e}")
+        raise HTTPException(status_code=500, detail=f"An error occurred while retrieving the avatar: {e}")
+
 @endpoint.get(
     "/{user_id}", 
     response_model=UserResponseSchema,
@@ -56,10 +62,9 @@ async def get_user_profile(
     try:
         user_profile = await profile_manager.get_user_profile(user_id)
         avatar_data = get_user_avatar(user_profile.avatar)
-        print(avatar_data)
         user_data = user_profile.dict()
         user_data['avatar'] = avatar_data
-        return user_profile
+        return user_data
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
