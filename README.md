@@ -1,11 +1,11 @@
 # OWC Backend
 ## 📊 GitHub Statistics
 
-![Languages](https://img.shields.io/github/languages/top/yourusername/OWC-backend)
-![Repo Size](https://img.shields.io/github/repo-size/yourusername/OWC-backend)
-![Issues](https://img.shields.io/github/issues/yourusername/OWC-backend)
-![Forks](https://img.shields.io/github/forks/yourusername/OWC-backend)
-![Stars](https://img.shields.io/github/stars/yourusername/OWC-backend)
+![Languages](https://img.shields.io/github/languages/top/massonskyi/OWC-backend)
+![Repo Size](https://img.shields.io/github/repo-size/massonskyi/OWC-backend)
+![Issues](https://img.shields.io/github/issues/massonskyi/OWC-backend)
+![Forks](https://img.shields.io/github/forks/massonskyi/OWC-backend)
+![Stars](https://img.shields.io/github/stars/massonskyi/OWC-backend)
 
 ### Languages Used
 - ![JavaScript](https://img.shields.io/badge/JavaScript-70%25-yellow)
@@ -36,7 +36,7 @@ To install and set up the project, follow these steps:
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/OWC-backend.git
+    git clone https://github.com/massonskyi/OWC-backend.git
     ```
 2. Navigate to the project directory:
     ```sh
