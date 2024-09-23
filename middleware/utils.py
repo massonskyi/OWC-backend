@@ -107,7 +107,7 @@ def create_access_token(
         data: dict,
         expires_delta=None,
         SECRET_KEY: str = None,
-        ACCESS_TOKEN_EXPIRE_MINUTES: int = 30,
+        ACCESS_TOKEN_EXPIRE_MINUTES: int = 999999,
         ALGORITHM: str = "HS256"
 ) -> tuple[str, datetime | Any]:
     """

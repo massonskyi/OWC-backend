@@ -4,6 +4,7 @@ import json
 from fastapi import (
     APIRouter, 
     Depends,
+    Form,
     HTTPException, 
     status,
     Response
@@ -22,6 +23,8 @@ from middleware.user.manager import UserManager
 from middleware.user.models import User
 
 from middleware.user.schemas import (
+    CodeSchema,
+    ProjectSchema,
     UserCreateSchema,
     Token,
     UserLoginSchema, WorkspaceSchema
@@ -39,7 +42,7 @@ UserLoginResponse = UserCreateSchema,\
 
 API_USER_MODULE = APIRouter(
     prefix="/user",
-    tags=["Authenticate module for Online Workspace Code for you"],
+    tags=["User & workspaces/projects module for Online Workspace Code for you"],
 )
 
 async def get_user_manager(
@@ -113,7 +116,7 @@ async def sign_up(
                 value=access_token ,
                 expires=expire.timestamp(),
                 secure=False,
-                httponly=True,
+                httponly=False,
                 samesite=None,
                 path="/",
                 domain="localhost"
@@ -163,7 +166,7 @@ async def sign_in(
         response_content['token_expires_at'] = expire
         response_content['message'] = "User authenticated successfully"
         status_code = status.HTTP_200_OK
-        """
+        
     finally:
         if not response_content.get('user', None):
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -171,7 +174,7 @@ async def sign_in(
             response_content['access_token'] = None
             response_content['token_expires_at'] = None
             response_content['message'] = "User authenticated error"
-        """
+            
         response_json = json.dumps(response_content)  # Convert dictionary to JSON string
         response = Response(content=response_json, media_type="application/json", status_code=status_code)
 
@@ -202,13 +205,8 @@ async def create_workspace(
     status_code = None
     response_content = {}
     try:
-        workspace = await workspace_manager.create_workspace(current_user.id, new)
-    except ValueError as val_err:
-        status_code = status.HTTP_400_BAD_REQUEST
-        raise HTTPException(
-            status_code=status_code,
-            detail=str(val_err)
-        )
+        workspace = await workspace_manager.create_workspace(current_user, new)
+
     except Exception as e:
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         raise HTTPException(
@@ -333,14 +331,198 @@ async def delete_workspace(
         response_json = json.dumps(response_content)
         return Response(content=response_json, media_type="application/json", status_code=status_code)
 
-
 @API_USER_MODULE.post(
-    '/workspaces/test_exec',
+    '/projects/',
+    summary="Create a new project",
+)
+async def create_project(
+        workspace_id: int,
+        new: ProjectSchema = Depends(),
+        project_manager: UserManager = Depends(get_user_manager),
+        current_user: User = Depends(get_current_user)
+) -> Response:
+    status_code = None
+    response_content = {}
+    try:
+        new.workspace_id = workspace_id 
+        project = await project_manager.create_project(current_user, new)
+    except Exception as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e)
+        )
+    else:
+        response_content['project'] = project.dict()
+        response_content['message'] = "Project created successfully"
+        status_code = status.HTTP_201_CREATED
+    finally:
+        response_json = json.dumps(response_content)
+        return Response(content=response_json, media_type="application/json", status_code=status_code)
+
+@API_USER_MODULE.get(
+    '/projects/{project_id}',
+    summary="Get project by ID",
+)
+async def get_project(
+        workspace_id: int,
+        project_id: Optional[int],
+        project_manager: UserManager = Depends(get_user_manager),
+        current_user: User = Depends(get_current_user)
+) -> Response:
+    """
+    Retrieve a project by its ID for the user.
+    """
+    status_code = None
+    response_content = {}
+    if project_id is None:
+        status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail="Project ID is not found"
+        )
+    try:
+        project = await project_manager.get_project(workspace_id, project_id)
+    except ValueError as val_err:
+        status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(val_err)
+        )
+    except Exception as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e)
+        )
+    else:
+        response_content['project'] = project.dict()
+        response_content['message'] = "Project retrieved successfully"
+        status_code = status.HTTP_200_OK
+    finally:
+        response_json = json.dumps(response_content)
+        return Response(content=response_json, media_type="application/json", status_code=status_code)
+
+@API_USER_MODULE.get(
+    '/projects/',
+    summary="Get all projects for the user",
+)
+async def get_projects(
+        workspace_id: int,
+        project_manager: UserManager = Depends(get_user_manager),
+        current_user: User = Depends(get_current_user)
+) -> Response:
+    """
+    Retrieve all projects for the user.
+    """
+    status_code = None
+    response_content = {}
+    try:
+        projects = await project_manager.get_projects(workspace_id)
+    except Exception as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e)
+        )
+    else:
+        response_content['projects'] = [proj.dict() for proj in projects]
+        response_content['message'] = "Projects retrieved successfully"
+        status_code = status.HTTP_200_OK
+    finally:
+        response_json = json.dumps(response_content)
+        return Response(content=response_json, media_type="application/json", status_code=status_code)
+
+@API_USER_MODULE.delete(
+    '/projects/{project_id}',
+    summary="Delete project by ID",
+)
+async def delete_project(
+        workspace_id: int,
+        project_id: int,
+        project_manager: UserManager = Depends(get_user_manager),
+        current_user: User = Depends(get_current_user)
+) -> Response:
+    """
+    Delete a project by its ID for the user.
+    """
+    status_code = None
+    response_content = {}
+    try:
+        await project_manager.delete_project(workspace_id, project_id)
+    except ValueError as val_err:
+        status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(val_err)
+        )
+    except Exception as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e)
+        )
+    else:
+        response_content['message'] = "Project deleted successfully"
+        status_code = status.HTTP_200_OK
+    finally:
+        response_json = json.dumps(response_content)
+        return Response(content=response_json, media_type="application/json", status_code=status_code)
+
+@API_USER_MODULE.put(
+    '/projects/{project_id}',
+    summary="Update project by ID",
+)
+async def update_project(
+        workspace_id: int,
+        project_id: int,
+        updated_data: ProjectSchema = Depends(),
+        project_manager: UserManager = Depends(get_user_manager),
+        current_user: User = Depends(get_current_user)
+) -> Response:
+    """
+    Update a project by its ID for the user.
+    """
+    status_code = None
+    response_content = {}
+    try:
+        updated_data.workspace_id = workspace_id  # Устанавливаем workspace_id для проекта
+        project = await project_manager.update_project(current_user.id, project_id, updated_data)
+    except ValueError as val_err:
+        status_code = status.HTTP_404_NOT_FOUND
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(val_err)
+        )
+    except Exception as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=status_code,
+            detail=str(e)
+        )
+    else:
+        response_content['project'] = project.dict()
+        response_content['message'] = "Project updated successfully"
+        status_code = status.HTTP_200_OK
+    finally:
+        response_json = json.dumps(response_content)
+        return Response(content=response_json, media_type="application/json", status_code=status_code)
+@API_USER_MODULE.post(
+    '/code/execute',
     summary='Testing code editor for not loging users',
 )
-async def execute(response, workspace_manager: UserManager = Depends(get_user_manager)):
-    result = await workspace_manager.test_exec(response)
-    if not result or result.error != '':
-        raise ValueError(f"Error compilation: {result.error}")
-
+async def execute(
+    code: str = Form(...,  description="Code", min_length=1, max_length=10000),
+    language: str = Form(..., description="Language", min_length=1, max_length=255),
+    workspace_manager: UserManager = Depends(get_user_manager),
+    current_user: User = Depends(get_current_user)
+):
+    response = CodeSchema(code=code, language=language)
+    try:
+        result = await workspace_manager.test_exec(response, user=current_user)
+    except Exception as e :
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error in code execution: {e}"
+        )
     return result

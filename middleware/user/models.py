@@ -389,7 +389,7 @@ class User(Base):
         self.uuid_file_store = str(uuid.uuid4())[:8]  # Создание случайного UUID для файла
 
         # Создание основной папки для пользователя
-        user_folder = os.path.join('storage', f'{self.name}_{self.uuid_file_store}')
+        user_folder = os.path.join('storage', f'{self.username}_{self.uuid_file_store}')
         os.makedirs(user_folder, exist_ok=True)
 
         # Создание подпапок
@@ -489,34 +489,12 @@ class User(Base):
 
         return Workspace(
             user_id=self.id,
-            name=f'{self.name}_{self.uuid_file_store}',
-            description=f'Workspace for {self.name}',
-            is_active=True
+            name=f'{self.username}_{self.uuid_file_store}',
+            description=f'Workspace for {self.username}',
+            is_active=True,
+            uuid_workspace=self.uuid_file_store
         )
     
-    def create_projects(
-        self, 
-        workspace_id: int
-    ) -> List['Project']:
-        """
-        Create projects for workspace with workspace_id
-        Args:
-        workspace_id: int, ID рабочей области
-        Returns:
-        List['Project']: Список проектов для рабочей области
-        """
-        projects = [
-            Project(
-                workspace_id=workspace_id,
-                name=f'{language}_project',
-                language=language,
-                description=f'{language} project for {self.name}',
-                is_active=True
-            )
-            for language in DOCKER_FILES.keys()
-        ]
-        return projects
-
 
 class UserToken(Base):
     __tablename__ = 'users_token'
@@ -581,6 +559,22 @@ workspace_table = Table(
         default=True,
         nullable=False
     ),
+    Column(
+        'is_public',
+        Boolean,
+        default=True,
+        nullable=False
+    ),
+    Column(
+        'filepath',
+        String(255),
+        nullable=True
+    ),
+    Column(
+        'uuid_workspace',
+        String(255),
+        nullable=True
+    )
 )
 
 project_table = Table(
@@ -688,7 +682,15 @@ class Workspace(Base):
         default=True,
         nullable=False
     )
-
+    
+    filepath: Optional[str] = Column(
+        String(255),
+        nullable=True
+    )
+    uuid_workspace: Optional[str] = Column(
+        String(255),
+        nullable=True
+    )
     def __iter__(self):
         """
         Overriding the __iter__ method
@@ -709,7 +711,33 @@ class Workspace(Base):
                 data[attr] = value
         return data
 
-
+    def create_workspace(self, user: User):
+        workspace_uuid = str(uuid.uuid4())
+        server_dir = os.getcwd()
+        base_dir = os.path.join(server_dir, 'storage', f'{user.username}_{user.uuid_file_store}')
+        workspace_dir = os.path.join(base_dir, f'{self.name}_{workspace_uuid}')
+       
+        self.filepath = workspace_dir
+        self.uuid_workspace = workspace_uuid
+        
+        # Создаем структуру папок
+        os.makedirs(os.path.join(workspace_dir, "temp"), exist_ok=True)
+        os.makedirs(os.path.join(workspace_dir, "projects"), exist_ok=True)
+        os.makedirs(os.path.join(workspace_dir, "assets"), exist_ok=True)
+        
+        # Создаем JSON файл с данными о пользователе
+        user_json_path = os.path.join(workspace_dir, "user_data.json")
+        with open(user_json_path, 'w') as json_file:
+            json.dump(user.to_dict(), json_file, indent=4)
+        
+        # Создаем TXT файл с данными о пользователе
+        user_txt_path = os.path.join(workspace_dir, "user_data.txt")
+        with open(user_txt_path, 'w') as txt_file:
+            for key, value in user.to_dict().items():
+                txt_file.write(f"{key}: {value}\n")
+        
+        print(f"Workspace создан в {workspace_dir}")
+        
 class Project(Base):
     __tablename__ = 'projects'
 
@@ -753,7 +781,10 @@ class Project(Base):
         default=True,
         nullable=False
     )
-
+    path: Optional[str] = Column(
+        String(1024),
+        nullable=False
+    )
     def __iter__(self):
         """
         Overriding the __iter__ method

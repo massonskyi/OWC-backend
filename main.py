@@ -105,7 +105,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Запуск сервера")
     parser.add_argument("--host", default="127.0.0.1", type=str)
     parser.add_argument("--port", default=8000, type=int)
-    
+    parser.add_argument("--reload", default=False, type=bool)
     return parser
 if __name__ == "__main__":
     """
@@ -114,4 +114,4 @@ if __name__ == "__main__":
     import uvicorn
     parser = create_parser()
     args = parser.parse_args()
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)

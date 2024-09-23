@@ -13,7 +13,7 @@ from alembic import context
 # from core import cfg, setup
 
 # for main server
-from backend.core import cfg, setup
+from core import cfg, setup
 
 asyncio.run(setup())
 

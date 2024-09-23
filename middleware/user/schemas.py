@@ -133,12 +133,8 @@ class UserResponseSchema(BaseModel):
 
 
 class WorkspaceSchema(BaseModel):
-    id: Union[int, None] = None
-    user_id: int
     name: str
     description: Union[str, None] = None
-    created_at: Optional[str]
-    updated_at: Optional[str]
     is_active: bool = True
     is_public: bool = True
 
@@ -147,13 +143,10 @@ class WorkspaceSchema(BaseModel):
         arbitrary_types_allowed = True
 
 class ProjectSchema(BaseModel):
-    id: Union[int, None] = None
     workspace_id: int
     name: str
     language: str
     description: Union[str, None] = None
-    created_at: Optional[str]
-    updated_at: Optional[str]
     is_active: bool = True
 
     class Config:
@@ -161,12 +154,9 @@ class ProjectSchema(BaseModel):
         arbitrary_types_allowed = True
 
 class WorkspaceResponseSchema(BaseModel):
-    id: Union[int, None]
     user_id: int
     name: str
     description: Union[str, None]
-    created_at: Optional[str]
-    updated_at: Optional[str]
     is_active: bool
     is_public: bool
 
@@ -175,15 +165,17 @@ class WorkspaceResponseSchema(BaseModel):
         arbitrary_types_allowed = True
 
 class ProjectResponseSchema(BaseModel):
-    id: Union[int, None]
     workspace_id: int
     name: str
     language: str
     description: Union[str, None]
-    created_at: Optional[str]
-    updated_at: Optional[str]
     is_active: bool
 
     class Config:
         orm_mode = True
         arbitrary_types_allowed = True
+        
+        
+class CodeSchema(BaseModel):
+    code: str
+    language: str
