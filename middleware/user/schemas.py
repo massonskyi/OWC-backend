@@ -1,5 +1,5 @@
 import datetime
-from typing import Optional, Union
+from typing import List, Optional, Union
 from fastapi import File, Form, UploadFile
 from pydantic import BaseModel, EmailStr, validator
 import re
@@ -142,33 +142,22 @@ class WorkspaceSchema(BaseModel):
         orm_mode = True
         arbitrary_types_allowed = True
 
-class ProjectSchema(BaseModel):
+class FileResponseSchema(BaseModel):
     name: str
-    language: str
-    description: Union[str, None] = None
-    is_active: bool = True
+    type: str
+    size: Optional[int] = None  # Only for files
+    children: Optional[List["FileResponseSchema"]] = None  # Only for folders
 
     class Config:
         orm_mode = True
         arbitrary_types_allowed = True
-
 class WorkspaceResponseSchema(BaseModel):
     user_id: int
     name: str
     description: Union[str, None]
     is_active: bool
     is_public: bool
-
-    class Config:
-        orm_mode = True
-        arbitrary_types_allowed = True
-
-class ProjectResponseSchema(BaseModel):
-    name: str
-    language: str
-    description: Union[str, None]
-    is_active: bool
-
+    files: List[FileResponseSchema] | None  # Update to use the new schema
     class Config:
         orm_mode = True
         arbitrary_types_allowed = True
@@ -177,3 +166,8 @@ class ProjectResponseSchema(BaseModel):
 class CodeSchema(BaseModel):
     code: str
     language: str
+    
+    
+class CreateRequest(BaseModel):
+    name: str
+    workspace_name: str

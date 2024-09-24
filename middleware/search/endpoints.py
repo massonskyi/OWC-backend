@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional # noqa: F401
 API_SEARCH_MODULE = APIRouter(
     prefix="/search",
-    tags=['API MODULE SEAR']
+    tags=['API MODULE SEARCH']
 )
 @API_SEARCH_MODULE.get(
     "/",

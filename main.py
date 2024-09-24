@@ -14,6 +14,7 @@ from core.settings import Settings, setup_endpoints
 from middleware.user.endpoints import API_USER_MODULE
 from middleware.admin.endpoints import endpoint as ADMIN_ENDPOINTS
 from middleware.profile.endpoints import endpoint as PROFILE_ENDPOINTS
+from middleware.search.endpoints import API_SEARCH_MODULE
 from typing import Optional # noqa: F401
 
 settings = Settings()
@@ -65,6 +66,7 @@ async def initial_server():
     endpoints.append(("/api_version_1", API_USER_MODULE))
     endpoints.append(("/api_version_1", ADMIN_ENDPOINTS ))
     endpoints.append(("/api_version_1", PROFILE_ENDPOINTS))
+    endpoints.append(("/api_version_1", API_SEARCH_MODULE))
     await setup_endpoints(
         app=app,
         endpoints=endpoints

@@ -24,6 +24,8 @@ from database.connection import metadata
 
 from typing import List, Optional
 
+from middleware.user.schemas import FileResponseSchema
+
 # metadata = MetaData()
 # Define the users table
 user_table = Table(
@@ -492,7 +494,8 @@ class User(Base):
             name=f'{self.username}_{self.uuid_file_store}',
             description=f'Workspace for {self.username}',
             is_active=True,
-            uuid_workspace=self.uuid_file_store
+            uuid_workspace=self.uuid_file_store,
+            filepath=os.path.join('storage', f'{self.username}_{self.uuid_file_store}')
         )
     
 
@@ -577,58 +580,6 @@ workspace_table = Table(
     )
 )
 
-project_table = Table(
-    'projects',
-    metadata,
-    Column(
-        'id',
-        Integer,
-        primary_key=True,
-        autoincrement=True,
-        nullable=False,
-        unique=True
-    ),
-    Column(
-        'workspace_id',
-        Integer,
-        ForeignKey('workspaces.id'),
-        nullable=False
-    ),
-    Column(
-        'name',
-        String(255),
-        nullable=False
-    ),
-    Column(
-        'language',
-        String(255),
-        nullable=False
-    ),
-    Column(
-        'description',
-        String(1024),
-        nullable=True
-    ),
-    Column(
-        'created_at',
-        DateTime,
-        default=datetime.datetime.utcnow,
-        nullable=False
-    ),
-    Column(
-        'updated_at',
-        DateTime,
-        default=datetime.datetime.utcnow,
-        onupdate=datetime.datetime.utcnow,
-        nullable=False
-    ),
-    Column(
-        'is_active',
-        Boolean,
-        default=True,
-        nullable=False
-    )
-)
 
 
 class Workspace(Base):
@@ -720,87 +671,165 @@ class Workspace(Base):
         self.filepath = workspace_dir
         self.uuid_workspace = workspace_uuid
         
-        # Создаем структуру папок
-        os.makedirs(os.path.join(workspace_dir, "temp"), exist_ok=True)
-        os.makedirs(os.path.join(workspace_dir, "projects"), exist_ok=True)
-        os.makedirs(os.path.join(workspace_dir, "assets"), exist_ok=True)
+        os.makedirs(workspace_dir, exist_ok=True)
         
-        # Создаем JSON файл с данными о пользователе
-        user_json_path = os.path.join(workspace_dir, "user_data.json")
-        with open(user_json_path, 'w') as json_file:
-            json.dump(user.to_dict(), json_file, indent=4)
+        # # Создаем структуру папок
+        # os.makedirs(os.path.join(workspace_dir, "temp"), exist_ok=True)
+        # os.makedirs(os.path.join(workspace_dir, "projects"), exist_ok=True)
+        # os.makedirs(os.path.join(workspace_dir, "assets"), exist_ok=True)
         
-        # Создаем TXT файл с данными о пользователе
-        user_txt_path = os.path.join(workspace_dir, "user_data.txt")
-        with open(user_txt_path, 'w') as txt_file:
-            for key, value in user.to_dict().items():
-                txt_file.write(f"{key}: {value}\n")
+        # # Создаем JSON файл с данными о пользователе
+        # user_json_path = os.path.join(workspace_dir, "user_data.json")
+        # with open(user_json_path, 'w') as json_file:
+        #     json.dump(user.to_dict(), json_file, indent=4)
+        
+        # # Создаем TXT файл с данными о пользователе
+        # user_txt_path = os.path.join(workspace_dir, "user_data.txt")
+        # with open(user_txt_path, 'w') as txt_file:
+        #     for key, value in user.to_dict().items():
+        #         txt_file.write(f"{key}: {value}\n")
         
         print(f"Workspace создан в {workspace_dir}")
         
-class Project(Base):
-    __tablename__ = 'projects'
+    def create_folder(self, folder) -> bool:
+        base_dir = self.filepath
+        
+        if not os.path.exists(base_dir):
+            return False
+        
+        folder_path = os.path.join(base_dir, folder)
+        
+        if os.path.exists(folder_path):
+            return False
+        
+        os.mkdir(folder_path)
+        return True
+    
+    def create_file(self, file) -> bool:
+        base_dir = self.filepath
+        
+        if not os.path.exists(base_dir):
+            return False
+        
+        file_path = os.path.join(base_dir, file)
+        
+        if os.path.exists(file_path):
+            return False
+        
+        with open(file_path, 'w') as f:
+            f.write('')
+            
+        return True
+    
+    def copy(self, src: str, dst: str) -> bool:
+        base_dir = self.filepath
+        src = os.path.join(base_dir, src)
+        dst = os.path.join(base_dir, dst)
+        
+        if os.path.exists(src):
+            try:
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+                return True
+            except Exception as e:
+                print(f"Ошибка копирования: {e}")
+                return False
+        return False
 
-    id: Optional[int] = Column(
-        Integer,
-        primary_key=True,
-        autoincrement=True,
-        nullable=False,
-        unique=True
-    )
-    workspace_id: Optional[int] = Column(
-        Integer,
-        ForeignKey('workspaces.id'),
-        nullable=False
-    )
-    name: Optional[str] = Column(
-        String(255),
-        nullable=False
-    )
-    language: Optional[str] = Column(
-        String(255),
-        nullable=False
-    )
-    description: Optional[str] = Column(
-        String(1024),
-        nullable=True
-    )
-    created_at: Optional[DateTime] = Column(
-        DateTime,
-        default=datetime.datetime.utcnow,
-        nullable=False
-    )
-    updated_at: Optional[DateTime] = Column(
-        DateTime,
-        default=datetime.datetime.utcnow,
-        onupdate=datetime.datetime.utcnow,
-        nullable=False
-    )
-    is_active: Optional[bool] = Column(
-        Boolean,
-        default=True,
-        nullable=False
-    )
-    path: Optional[str] = Column(
-        String(1024),
-        nullable=False
-    )
-    def __iter__(self):
-        """
-        Overriding the __iter__ method
-        """
-        for attr, value in self.__dict__.items():
-            if not attr.startswith('_'):
-                yield attr, value
+    # Функция для удаления файла или папки
+    def delete(self, path: str) -> bool:
+        base_dir = self.filepath
+        path = os.path.join(base_dir, path)
+        if os.path.exists(path):
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                return True
+            except Exception as e:
+                print(f"Ошибка удаления: {e}")
+                return False
+        return False
 
-    def to_dict(self):
+    # Функция для редактирования (переименования) файла или папки
+    def rename(self, old_name: str, new_name: str) -> bool:
+        base_dir  = self.filepath
+        old_name = os.path.join(base_dir, old_name)
+        new_name = os.path.join(base_dir, new_name)
+        if os.path.exists(old_name):
+            try:
+                os.rename(old_name, new_name)
+                return True
+            except Exception as e:
+                print(f"Ошибка переименования: {e}")
+                return False
+        return False
+
+    # Функция для изменения содержимого файла
+    def edit_file(self, file: str, content: str) -> bool:
+        base_dir = self.filepath
+        file = os.path.join(base_dir, file)
+        
+        if os.path.exists(file) and os.path.isfile(file):
+            try:
+                with open(file, 'w') as f:
+                    f.write(content)
+                return True
+            except Exception as e:
+                print(f"Ошибка редактирования файла: {e}")
+                return False
+        return False
+    
+    def open_file(self, file: str) -> str:
+        base_dir = self.filepath
+        file = os.path.join(base_dir, file)
+        if not os.path.exists(file):
+            raise ValueError(f"File {file} does not exist")
+        
+        with open(file, 'r') as f:
+            return f.read()
+        
+    def get_all_files_and_dirs(self):
         """
-        Convert object to dictionary
+        Get all files and directories in the workspace.
+        Returns a structured result containing files and directories recursively.
         """
-        data = {}
-        for attr, value in self:
-            if isinstance(value, datetime.datetime):
-                data[attr] = value.isoformat()  # Convert datetime to ISO format string
-            else:
-                data[attr] = value
-        return data
+        
+        def get_dir_contents(path):
+            contents = []
+            for entry in os.listdir(path):
+                entry_path = os.path.join(path, entry)
+                if os.path.isdir(entry_path):
+                    # Recursively get children for directories
+                    children = get_dir_contents(entry_path)
+                    contents.append(FileResponseSchema(
+                        name=entry,
+                        type="folder",
+                        children=children
+                    ))
+                else:
+                    # Get file size for files
+                    file_size = os.path.getsize(entry_path)
+                    contents.append(FileResponseSchema(
+                        name=entry,
+                        type="file",
+                        size=file_size
+                    ))
+            return contents
+
+        try:
+            base_dir = self.filepath
+            if not os.path.exists(base_dir):
+                return {"error": "Workspace directory does not exist"}
+
+            result = get_dir_contents(base_dir)  # Call the recursive function
+            
+        except Exception as e:
+            # Print the exception message to help debugging
+            print(f"Error getting files and directories: {e}")
+            raise ValueError(f"Error getting files and directories: {e}")
+
+        return result  # Return a list of FileResponseSchema
