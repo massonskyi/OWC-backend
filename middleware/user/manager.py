@@ -596,7 +596,25 @@ class UserManager:
             await self.logger.b_crit(f"Error retrieving workspaces for user: {user_id} {e}")
             raise ValueError(f"Error retrieving workspaces for user: {user_id} {e}") from e
 
-
+    async def delete_workspace(self, workspace_name: str, user_id: int):
+        try:
+            async with self.__async_db_session as async_session:
+                    # Найти рабочее пространство по идентификатору и идентификатору пользователя
+                    result = await async_session.execute(
+                        select(Workspace).filter(Workspace.name == workspace_name, Workspace.user_id == user_id)
+                    )
+                    workspace = result.scalars().first()
+                    
+                    if workspace:
+                        # Удалить рабочее пространство
+                        await async_session.delete(workspace)
+                        await async_session.commit()
+                    else:
+                        await self.logger.b_warn(f"Workspace with id {workspace_id} not found for user {user_id}")
+                        raise ValueError(f"Workspace with id {workspace_id} not found for user {user_id}")
+        except Exception as e:
+            await self.logger.b_crit(f"Failed to delete workspace: {e}")
+            raise ValueError(f"Failed to delete workspace: {e}")
     async def create_file(self, name: str, workspace: Workspace):
         """
         Создание файла в workspace

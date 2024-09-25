@@ -362,10 +362,10 @@ async def get_workspaces(
 
 @API_USER_MODULE.delete(
     '/workspaces/{workspace_name}',
-    summary="Delete workspace by ID",
+    summary="Delete workspace by NAME",
 )
 async def delete_workspace(
-        workspace_id: str,
+        workspace_name: str,
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Response:
@@ -375,7 +375,7 @@ async def delete_workspace(
     status_code = None
     response_content = {}
     try:
-        await workspace_manager.delete_workspace(current_user.id, workspace_id)
+        await workspace_manager.delete_workspace(workspace_name, current_user.id)
     except ValueError as val_err:
         status_code = status.HTTP_404_NOT_FOUND
         raise HTTPException(
