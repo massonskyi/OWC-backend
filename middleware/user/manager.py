@@ -688,8 +688,21 @@ class UserManager:
             raise ValueError(f"Error opening file '{file}': {e}")
         return data
 
-    
-    
+    async def open_file(self, file: str, workspace: Workspace) -> str:
+        """
+        Возвращаем данные из файла 
+        """
+        try:
+            data = workspace.open_file(file)
+            if data:
+                await self.logger.b_info(f"File '{file}' opened successfully.")
+            else:
+                raise ValueError(f"Failed to open file '{file}'.")
+        except Exception as e:
+            await self.logger.b_crit(f"Error opening file '{file}': {e}")
+            raise ValueError(f"Error opening file '{file}': {e}")
+        return data
+
     async def execute_user_code(self, response, user):
         """
         This method is implemented testing code runner for nonlogin users

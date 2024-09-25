@@ -429,7 +429,7 @@ async def create_file(
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace_by_name(current_user.id, workspace_name)
+        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
         await workspace_manager.create_file(filename, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -455,7 +455,7 @@ async def create_folder(
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace_by_name(current_user.id, workspace_name)
+        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
         await workspace_manager.create_folder(foldername, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -481,7 +481,7 @@ async def copy_item(
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace_by_name(current_user.id, workspace_name)
+        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
         await workspace_manager.copy_item(src, dst, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -498,13 +498,13 @@ async def copy_item(
 # Удаление файла или папки
 @API_USER_MODULE.delete('/workspaces/{workspace_name}/item', summary="Delete a file or folder in a workspace")
 async def delete_item(
-        workspace_id: str,
+        workspace_name: str,
         path: str,
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace_by_name(current_user.id, workspace_id)
+        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
         await workspace_manager.delete_item(path, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -521,14 +521,14 @@ async def delete_item(
 # Переименование файла или папки
 @API_USER_MODULE.put('/workspaces/{workspace_name}/rename', summary="Rename a file or folder in a workspace")
 async def rename_item(
-        workspace_id: str,
+        workspace_name: str,
         old_name: str,
         new_name: str,
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace_by_name(current_user.id, workspace_id)
+        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
         await workspace_manager.rename_item(old_name, new_name, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -544,7 +544,7 @@ async def rename_item(
 
 # Редактирование файла
 @API_USER_MODULE.put(
-    '/workspaces/{workspace_id}/file', 
+    '/workspaces/{workspace_name}/file', 
     summary="Edit a file in a workspace"
 )
 async def edit_file(
@@ -569,7 +569,24 @@ async def edit_file(
         )
     return JSONResponse(content={"message": f"File '{filename}' edited successfully."}, status_code=status.HTTP_200_OK)
 
-
+@API_USER_MODULE.get(
+    "/user/workspaces/{workspace_name}/file/{file_name}",
+    summary="Open a file in a workspace",
+)
+async def open_file(
+    workspace_name: str, 
+    file_name: str,
+    workspace_manager: UserManager = Depends(get_user_manager),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
+        contents = await workspace_manager.open_file(file_name, workspace)
+        return JSONResponse(content={"contents": contents})
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @API_USER_MODULE.post(
     '/code/execute',
     summary='Testing code editor for not loging users',
