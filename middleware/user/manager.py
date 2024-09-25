@@ -367,7 +367,9 @@ class UserManager:
             await self.logger.b_crit(f"Error creating workspace: {new}")
             raise ValueError(f"Error creating workspace: {new}")
         
-        return WorkspaceResponseSchema(**new_workspace.to_dict())
+        return WorkspaceResponseSchema(
+            user_id=user.id, name=new_workspace.name, description=new_workspace.description, is_active=new_workspace.is_active, is_public=new_workspace.is_public,files=None
+        )
     
     async def update_workspace(
             self,
@@ -922,3 +924,15 @@ class UserManager:
         with self.create_code_file(path, code):
             container_path = "/usr/src/app/code.go"  # Path inside the container
             return self.run_docker_container("golang:latest", f"sh -c 'cd /usr/src/app && go mod init usercode && go build {container_path} && ./code'", user_dir)
+        
+        
+    async def get_abs_file_path(self, workspace_path: str, filename: str) -> str:
+        abs_path = os.path.join(workspace_path, filename)
+        
+        # Защита от атак через '../'
+        if not abs_path.startswith(workspace_path):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid path"
+            )
+        return abs_path

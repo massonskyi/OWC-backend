@@ -10,7 +10,8 @@ from fastapi import (
     APIRouter, 
     Depends,
     Form,
-    HTTPException, 
+    HTTPException,
+    Query, 
     status,
     Response
 
@@ -328,30 +329,7 @@ async def get_workspace_by_name(
         return workspace
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-@API_USER_MODULE.get(
-    '/workspaces/{workspace_name}/file/{filename}', 
-    summary="Open a file in a workspace"
-)
-async def open_file(
-        workspace_name: str,
-        filename: str,
-        workspace_manager: UserManager = Depends(get_user_manager),
-        current_user: User = Depends(get_current_user)
-) -> Any:
-    try:
-        workspace = await workspace_manager.get_workspace(name=workspace_name)
-        file_contents = await workspace_manager.open_file(filename, workspace)
-    except ValueError as val_err:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(val_err)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-    return JSONResponse(content={"contents": file_contents}, status_code=status.HTTP_200_OK)
+
 @API_USER_MODULE.get(
     '/workspaces',
     summary="Get all workspaces for the user",
@@ -424,24 +402,34 @@ async def delete_workspace(
 )
 async def create_file(
         workspace_name: str,
-        filename: str,
+        filename: str = Query(...),
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
-        await workspace_manager.create_file(filename, workspace)
+        # Получаем рабочее пространство
+        workspace = await workspace_manager.get_workspace(workspace_name)
+        
+        # Генерируем путь к файлу
+        file_path = await workspace_manager.get_abs_file_path(workspace.filepath, filename)
+        
+        # Проверяем, существует ли директория, и создаем все вложенные папки
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Создаем файл
+        await workspace_manager.create_file(file_path, workspace)
     except ValueError as val_err:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=400,
             detail=str(val_err)
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=str(e)
         )
-    return JSONResponse(content={"message": f"File '{filename}' created successfully."}, status_code=status.HTTP_201_CREATED)
+    
+    return JSONResponse(content={"message": f"File '{filename}' created successfully."}, status_code=201)
 
 # Создание папки
 @API_USER_MODULE.post(
@@ -450,24 +438,33 @@ async def create_file(
 )
 async def create_folder(
         workspace_name: str,
-        foldername: str,
+        foldername: str,  # Может содержать вложенные папки
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
-        await workspace_manager.create_folder(foldername, workspace)
+        # Получаем рабочее пространство
+        workspace = await workspace_manager.get_workspace(workspace_name)
+        
+        # Генерируем путь для папки с учетом вложенных директорий
+        folder_path = await workspace_manager.get_abs_file_path(workspace.filepath, foldername)
+        
+        # Создаем вложенные директории, если они еще не существуют
+        os.makedirs(folder_path, exist_ok=True)
+        
+        await workspace_manager.create_folder(folder_path, workspace)
     except ValueError as val_err:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=400,
             detail=str(val_err)
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=str(e)
         )
-    return JSONResponse(content={"message": f"Folder '{foldername}' created successfully."}, status_code=status.HTTP_201_CREATED)
+    
+    return JSONResponse(content={"message": f"Folder '{foldername}' created successfully."}, status_code=201)
 
 @API_USER_MODULE.post(
     '/workspaces/{workspace_name}/copy', 
@@ -481,7 +478,7 @@ async def copy_item(
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
+        workspace = await workspace_manager.get_workspace(workspace_name)
         await workspace_manager.copy_item(src, dst, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -496,27 +493,41 @@ async def copy_item(
     return JSONResponse(content={"message": f"'{src}' copied to '{dst}' successfully."}, status_code=status.HTTP_200_OK)
 
 # Удаление файла или папки
-@API_USER_MODULE.delete('/workspaces/{workspace_name}/item', summary="Delete a file or folder in a workspace")
+@API_USER_MODULE.delete(
+    '/workspaces/{workspace_name}/item',  # Изменил путь на более универсальный
+    summary="Delete a file or folder in a workspace"
+)
 async def delete_item(
         workspace_name: str,
-        path: str,
+        path: str,  # Может быть как файлом, так и папкой
         workspace_manager: UserManager = Depends(get_user_manager),
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
-        await workspace_manager.delete_item(path, workspace)
+        # Получаем рабочее пространство
+        workspace = await workspace_manager.get_workspace(workspace_name)
+        
+        # Генерируем абсолютный путь
+        item_path = await workspace_manager.get_abs_file_path(workspace.filepath, path)
+        
+        # Проверяем, что путь существует
+        if not os.path.exists(item_path):
+            raise ValueError(f"Item '{path}' does not exist.")
+        
+        # Удаляем элемент (файл или папку)
+        await workspace_manager.delete_item(item_path, workspace)
     except ValueError as val_err:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=400,
             detail=str(val_err)
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=str(e)
         )
-    return JSONResponse(content={"message": f"'{path}' deleted successfully."}, status_code=status.HTTP_200_OK)
+    
+    return JSONResponse(content={"message": f"'{path}' deleted successfully."}, status_code=200)
 
 # Переименование файла или папки
 @API_USER_MODULE.put('/workspaces/{workspace_name}/rename', summary="Rename a file or folder in a workspace")
@@ -528,7 +539,7 @@ async def rename_item(
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
+        workspace = await workspace_manager.get_workspace(workspace_name)
         await workspace_manager.rename_item(old_name, new_name, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -541,6 +552,40 @@ async def rename_item(
             detail=str(e)
         )
     return JSONResponse(content={"message": f"'{old_name}' renamed to '{new_name}' successfully."}, status_code=status.HTTP_200_OK)
+
+@API_USER_MODULE.get(
+    '/workspaces/{workspace_name}/file/{filename:path}', 
+    summary="Open a file in a workspace"
+)
+async def open_file(
+        workspace_name: str,
+        filename: str,
+        workspace_manager: UserManager = Depends(get_user_manager),
+        current_user: User = Depends(get_current_user)
+) -> Any:
+    try:
+        # Получаем рабочее пространство
+        workspace = await workspace_manager.get_workspace(name=workspace_name)
+        
+        # Получаем абсолютный путь к файлу с учетом вложенных папок
+        file_path = await workspace_manager.get_abs_file_path(workspace.filepath, filename)
+        print(f"Trying to open file at path: {file_path}")
+        
+        # Читаем содержимое файла
+        file_contents = await workspace_manager.open_file(file_path, workspace)
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error opening file: {val_err}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}"
+        )
+    
+    # Возвращаем содержимое файла
+    return JSONResponse(content={"contents": file_contents}, status_code=200)
 
 # Редактирование файла
 @API_USER_MODULE.put(
@@ -555,7 +600,7 @@ async def edit_file(
         current_user: User = Depends(get_current_user)
 ) -> Any:
     try:
-        workspace = await workspace_manager.get_workspace_by_name(current_user.id, workspace_name)
+        workspace = await workspace_manager.get_workspace_by_name(workspace_name)
         await workspace_manager.edit_file(filename, content, workspace)
     except ValueError as val_err:
         raise HTTPException(
@@ -569,24 +614,7 @@ async def edit_file(
         )
     return JSONResponse(content={"message": f"File '{filename}' edited successfully."}, status_code=status.HTTP_200_OK)
 
-@API_USER_MODULE.get(
-    "/user/workspaces/{workspace_name}/file/{file_name}",
-    summary="Open a file in a workspace",
-)
-async def open_file(
-    workspace_name: str, 
-    file_name: str,
-    workspace_manager: UserManager = Depends(get_user_manager),
-    current_user: User = Depends(get_current_user)
-):
-    try:
-        workspace = await workspace_manager.get_workspace(current_user.id, workspace_name)
-        contents = await workspace_manager.open_file(file_name, workspace)
-        return JSONResponse(content={"contents": contents})
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
 @API_USER_MODULE.post(
     '/code/execute',
     summary='Testing code editor for not loging users',

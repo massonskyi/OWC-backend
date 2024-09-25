@@ -692,39 +692,19 @@ class Workspace(Base):
         print(f"Workspace создан в {workspace_dir}")
         
     def create_folder(self, folder) -> bool:
-        base_dir = self.filepath
         
-        if not os.path.exists(base_dir):
-            return False
-        
-        folder_path = os.path.join(base_dir, folder)
-        
-        if os.path.exists(folder_path):
-            return False
-        
-        os.mkdir(folder_path)
+        os.mkdir(folder)
         return True
     
     def create_file(self, file) -> bool:
-        base_dir = self.filepath
-        
-        if not os.path.exists(base_dir):
-            return False
-        
-        file_path = os.path.join(base_dir, file)
-        
-        if os.path.exists(file_path):
-            return False
-        
-        with open(file_path, 'w') as f:
+
+        with open(file, 'w') as f:
             f.write('')
             
         return True
     
     def copy(self, src: str, dst: str) -> bool:
-        base_dir = self.filepath
-        src = os.path.join(base_dir, src)
-        dst = os.path.join(base_dir, dst)
+   
         
         if os.path.exists(src):
             try:
@@ -740,8 +720,6 @@ class Workspace(Base):
 
     # Функция для удаления файла или папки
     def delete(self, path: str) -> bool:
-        base_dir = self.filepath
-        path = os.path.join(base_dir, path)
         if os.path.exists(path):
             try:
                 if os.path.isdir(path):
@@ -756,9 +734,6 @@ class Workspace(Base):
 
     # Функция для редактирования (переименования) файла или папки
     def rename(self, old_name: str, new_name: str) -> bool:
-        base_dir  = self.filepath
-        old_name = os.path.join(base_dir, old_name)
-        new_name = os.path.join(base_dir, new_name)
         if os.path.exists(old_name):
             try:
                 os.rename(old_name, new_name)
@@ -770,8 +745,6 @@ class Workspace(Base):
 
     # Функция для изменения содержимого файла
     def edit_file(self, file: str, content: str) -> bool:
-        base_dir = self.filepath
-        file = os.path.join(base_dir, file)
         
         if os.path.exists(file) and os.path.isfile(file):
             try:
@@ -784,8 +757,6 @@ class Workspace(Base):
         return False
     
     def open_file(self, file: str) -> str:
-        base_dir = self.filepath
-        file = os.path.join(base_dir, file)
         if not os.path.exists(file):
             raise ValueError(f"File {file} does not exist")
         
