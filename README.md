@@ -1,4 +1,4 @@
-# OWC Backend
+# OWC Backend (Inactive)
 ## 📊 GitHub Statistics
 
 ![Languages](https://img.shields.io/github/languages/top/massonskyi/OWC-backend)
