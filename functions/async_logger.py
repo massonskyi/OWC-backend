@@ -2,6 +2,7 @@
 Takes and modify from https://github.com/massonskyi/pyllt/blob/master/pyllt/functiontools/logger.py
 Async logger for backend app
 """
+import os
 from typing import Union
 
 # for alembic
@@ -76,7 +77,9 @@ class AsyncLogger:
         Initialize the logger. 
         """
         edx('../logs')
-        self.file_handler = logging.FileHandler(f'../logs/{name}_{random.randint(0, 99)}_{datetime.datetime.now()}.log')
+        self.file_handler = logging.FileHandler(
+            f'{os.getcwd()}\\logs\\{name}_{random.randint(0, 99)}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.log'
+        )
         self.setup(name)
             
     def setup(self, name: Union[str, None] = None):

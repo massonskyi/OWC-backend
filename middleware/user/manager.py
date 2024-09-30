@@ -604,14 +604,18 @@ class UserManager:
                         select(Workspace).filter(Workspace.name == workspace_name, Workspace.user_id == user_id)
                     )
                     workspace = result.scalars().first()
-                    
+                    workspace.delete_workspace()
                     if workspace:
                         # Удалить рабочее пространство
                         await async_session.delete(workspace)
                         await async_session.commit()
                     else:
-                        await self.logger.b_warn(f"Workspace with id {workspace_id} not found for user {user_id}")
-                        raise ValueError(f"Workspace with id {workspace_id} not found for user {user_id}")
+                        await self.logger.b_warn(f"Workspace with id {workspace.id} not found for user {user_id}")
+                        raise ValueError(f"Workspace with id {workspace.id} not found for user {user_id}")
+        except Exception as e:
+            await self.logger.b_crit(f"Failed to delete workspace: {e}")
+            raise ValueError(f"Failed to delete workspace: {e}")
+
         except Exception as e:
             await self.logger.b_crit(f"Failed to delete workspace: {e}")
             raise ValueError(f"Failed to delete workspace: {e}")

@@ -690,12 +690,25 @@ class Workspace(Base):
         #         txt_file.write(f"{key}: {value}\n")
         
         print(f"Workspace создан в {workspace_dir}")
-        
+
+    def delete_workspace(self):
+        # Удаляем папку с файлами
+        shutil.rmtree(self.filepath)
+        return True
+
+    def get_file_list(self) -> list:
+        # Получаем список файлов и папок в папке
+        file_list = os.listdir(self.filepath)
+        return file_list
+
+    def get_file_path(self, file_name: str) -> str:
+        # Получаем полный путь к файлу
+        return os.path.join(self.filepath, file_name)
     def create_folder(self, folder) -> bool:
         
         os.mkdir(folder)
         return True
-    
+
     def create_file(self, file) -> bool:
 
         with open(file, 'w') as f:
